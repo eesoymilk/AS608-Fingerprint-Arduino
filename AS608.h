@@ -85,7 +85,7 @@ struct Packet {
     uint32_t address;
     uint8_t type;
     uint16_t length;
-    uint8_t data[512];
+    uint8_t data[128];
     uint16_t checksum;
 
     Packet(
@@ -97,7 +97,7 @@ struct Packet {
 
     void send(SoftwareSerial &serial);
 
-    String to_string() const;
+    void print() const;
 
     static void read_start_code(SoftwareSerial &serial);
 
@@ -129,7 +129,7 @@ class FingerprintModule {
 
     ConfirmationCode up_image();
 
-    String to_string() const;
+    void print() const;
 };
 
 }  // namespace AS608

@@ -24,7 +24,7 @@ void setup()
 
     Serial.println(F("Reading sensor parameters"));
     finger.read_parameters();
-    Serial.print(finger.to_string());
+    finger.print();
 }
 
 void loop()  // run over and over again
@@ -65,14 +65,16 @@ void loop()  // run over and over again
 
     size_t i = 1;
     while (true) {
-        Serial.print("Reading packet #" + String(i++) + ":");
         AS608::Packet packet = finger.read_packet();
-        Serial.println(packet.to_string());
 
         if (packet.type != AS608::PacketType::DataPacket ||
             packet.type != AS608::PacketType::EndOfDataPacket) {
             Serial.println(F("Failed to read packet"));
             continue;
+        }
+
+        for (size_t i = 0; i < packet.length - 2; i++) {
+            Serial.write(packet.data[i]);
         }
 
         if (packet.type == AS608::PacketType::EndOfDataPacket) {

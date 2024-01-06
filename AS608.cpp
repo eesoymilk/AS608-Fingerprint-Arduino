@@ -50,6 +50,9 @@ void Packet::send(SoftwareSerial &serial)
 
     serial.write(static_cast<uint8_t>(checksum >> 8));
     serial.write(static_cast<uint8_t>(checksum & 0xFF));
+
+    Serial.println(F("Sent"));
+    this->print();
 }
 
 Packet Packet::read_from(SoftwareSerial &serial)
@@ -73,14 +76,17 @@ Packet Packet::read_from(SoftwareSerial &serial)
     length = serial.read() << 8;
     length |= serial.read();
 
-    while (serial.available() < length) {
-        delay(1);
-    }
-
     data = new uint8_t[length - 2];
 
     for (size_t i = 0; i < length - 2; i++) {
+        while (serial.available() < 1) {
+            delay(1);
+        }
         data[i] = serial.read();
+    }
+
+    while (serial.available() < 2) {
+        delay(1);
     }
 
     uint16_t checksum = serial.read() << 8;
@@ -88,30 +94,38 @@ Packet Packet::read_from(SoftwareSerial &serial)
 
     Packet packet = Packet(type, length - 2, data, address);
 
+    // Serial.println(F("Received"));
+    // packet.print();
+
     delete[] data;
 
     return packet;
 }
 
-String Packet::to_string() const
+void Packet::print() const
 {
-    String result;
+    Serial.println(F("----------------------"));
+    Serial.print(F("| Start Code: 0x"));
+    Serial.println(StartCode, HEX);
+    Serial.print(F("| Address: 0x"));
+    Serial.println(address, HEX);
+    Serial.print(F("| Type: 0x"));
+    Serial.println(type, HEX);
+    Serial.print(F("| Length: "));
+    Serial.println(length);
 
-    result += " - Start Code: 0x" + String(StartCode, HEX) + "\n";
-    result += " - Address: 0x" + String(address, HEX) + "\n";
-    result += " - Type: 0x" + String(type, HEX) + "\n";
-    result += " - Length: " + String(length) + "\n";
-
-    result += " - Data: ";
+    Serial.print(F("| Data: "));
     for (int i = 0; i < length - 2; ++i) {
-        if (data[i] < 0x10) result += '0';  // Leading zero for single digit hex
-        result += String(data[i], HEX) + " ";
+        if (data[i] < 0x10)
+            Serial.print(F("0"));  // Leading zero for single digit hex
+        Serial.print(data[i], HEX);
+        Serial.print(F(" "));
     }
-    result += "\n";
+    Serial.println();
 
-    result += " - Checksum: 0x" + String(checksum, HEX) + "\n";
-
-    return result;
+    Serial.print(F("| Checksum: 0x"));
+    Serial.println(checksum, HEX);
+    Serial.println(F("----------------------"));
 }
 
 FingerprintModule::FingerprintModule(SoftwareSerial *serial, uint32_t password)
@@ -207,19 +221,22 @@ ConfirmationCode FingerprintModule::up_image()
     return static_cast<ConfirmationCode>(response.data[0]);
 }
 
-String FingerprintModule::to_string() const
+void FingerprintModule::print() const
 {
-    String result;
-
-    result += "Status Register: 0x" + String(status_register, HEX) + "\n";
-    result += "Sensor Type: 0x" + String(sensor_type, HEX) + "\n";
-    result += "Capacity: 0x" + String(capacity, HEX) + "\n";
-    result += "Security Level: 0x" + String(security_level, HEX) + "\n";
-    result += "Device Address: 0x" + String(device_address, HEX) + "\n";
-    result += "Data Packet Length: " + String(data_packet_length) + "\n";
-    result += "Baudrate: " + String(baudrate) + "\n";
-
-    return result;
+    Serial.print(F("Status Register: 0x"));
+    Serial.println(status_register, HEX);
+    Serial.print(F("Sensor Type: 0x"));
+    Serial.println(sensor_type, HEX);
+    Serial.print(F("Capacity: 0x"));
+    Serial.println(capacity, HEX);
+    Serial.print(F("Security Level: "));
+    Serial.println(security_level);
+    Serial.print(F("Device Address: 0x"));
+    Serial.println(device_address, HEX);
+    Serial.print(F("Data Packet Length: "));
+    Serial.println(data_packet_length);
+    Serial.print(F("Baudrate: "));
+    Serial.println(baudrate);
 }
 
 }  // namespace AS608
