@@ -1,0 +1,31 @@
+[
+  {
+    "directory": "/home/soymilk/src/Fingerprint-Recognition",
+    "arguments": [
+      "/home/soymilk/.arduino15/internal/arduino_avr-gcc_7.3.0-atmel3.6.1-arduino7_fc423089e09cfcab/bin/avr-g++",
+      "-c",
+      "-g",
+      "-Os",
+      "-w",
+      "-std=gnu++11",
+      "-fpermissive",
+      "-fno-exceptions",
+      "-ffunction-sections",
+      "-fdata-sections",
+      "-fno-threadsafe-statics",
+      "-Wno-error=narrowing",
+      "-MMD",
+      "-flto",
+      "-mmcu=atmega328p",
+      "-DF_CPU=16000000L",
+      "-DARDUINO=10607",
+      "-DARDUINO_AVR_UNO",
+      "-DARDUINO_ARCH_AVR",
+      "-I/home/soymilk/.arduino15/internal/arduino_avr_1.8.6_78e0815c6047bc54/cores/arduino",
+      "-I/home/soymilk/.arduino15/internal/arduino_avr_1.8.6_78e0815c6047bc54/variants/standard",
+      "-I/home/soymilk/.arduino15/internal/arduino_avr_1.8.6_78e0815c6047bc54/libraries/SoftwareSerial/src",
+      "/home/soymilk/src/Fingerprint-Recognition/AS608.cpp"
+    ],
+    "file": "/home/soymilk/src/Fingerprint-Recognition/AS608.cpp"
+  }
+]

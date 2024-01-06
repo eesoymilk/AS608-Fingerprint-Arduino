@@ -1,0 +1,14 @@
+BasedOnStyle: Google
+IndentWidth: 4
+UseTab: Never
+AllowShortFunctionsOnASingleLine: InlineOnly
+AlignTrailingComments: true
+IndentCaseLabels: true
+
+BreakBeforeBraces: Custom
+BraceWrapping:
+  AfterFunction: true
+
+AlignAfterOpenBracket: BlockIndent
+BinPackArguments: false
+BinPackParameters: false
