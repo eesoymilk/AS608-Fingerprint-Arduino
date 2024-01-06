@@ -7,5 +7,5 @@ profiles:
     platforms:
       - platform: arduino:avr (1.8.6)
     libraries:
-      - Adafruit Fingerprint Sensor Library (2.1.2)
+      - AS608_Fingerprint (0.0.1)
 default_profile: fingerprint
