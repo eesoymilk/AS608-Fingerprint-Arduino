@@ -49,7 +49,7 @@ def decode_image(image_bytes: bytearray | bytes, width: int, height: int):
 
 class AS608Controller:
     def __init__(self, port_name: str = "/dev/ttyACM1"):
-        self.ser = serial.Serial(port_name, 9600, timeout=1)
+        self.ser = serial.Serial(port_name, 57600, timeout=1)
 
         while True:
             state_byte = self.ser.read(1)
@@ -156,6 +156,7 @@ class AS608Controller:
 
             ack_bytes = 0x30.to_bytes(1, byteorder="big")
             self.ser.write(ack_bytes)
+            self.ser.reset_input_buffer()
 
         print(f"Image size: {len(image_bytes)} bytes")
         image = decode_image(image_bytes, 256, 256)

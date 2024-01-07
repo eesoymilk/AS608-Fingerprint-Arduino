@@ -11,7 +11,7 @@ uint8_t buffer_byte;
 
 void setup()
 {
-    Serial.begin(9600);
+    Serial.begin(57600);
     while (!Serial)
         ;
     delay(100);
@@ -97,6 +97,7 @@ void upload_image()
 
         // Serial.println("Received packet!!!");
 
+        Serial.flush();
         Serial.write(packet.length - 2);
         for (uint8_t i = 0; i < packet.length - 2; i++) {
             while (!Serial.availableForWrite()) {
@@ -124,10 +125,5 @@ void upload_image()
         }
 
         delay(1000);
-    }
-
-    while (1) {
-        Serial.write(0x69);
-        delay(1);
     }
 }
