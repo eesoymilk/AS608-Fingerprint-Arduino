@@ -1,11 +1,2 @@
 default_fqbn: arduino:avr:uno
 default_port: /dev/ttyACM0
-profiles:
-  fingerprint:
-    note: fingerprint recognition profile
-    fqbn: arduino:avr:uno
-    platforms:
-      - platform: arduino:avr (1.8.6)
-    libraries:
-      - AS608_Fingerprint (0.0.1)
-default_profile: fingerprint

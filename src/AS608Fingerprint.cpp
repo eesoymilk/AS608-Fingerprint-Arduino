@@ -1,4 +1,4 @@
-#include "AS608_Fingerprint.h"
+#include "AS608Fingerprint.h"
 
 namespace AS608 {
 

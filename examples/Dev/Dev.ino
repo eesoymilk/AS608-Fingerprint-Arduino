@@ -1,4 +1,4 @@
-#include "AS608_Fingerprint_Module_Library.h"
+#include "AS608Fingerprint.h"
 
 SoftwareSerial fingerprint_serial = SoftwareSerial(2, 3);
 AS608::FingerprintModule finger = AS608::FingerprintModule(&fingerprint_serial);
