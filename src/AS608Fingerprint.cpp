@@ -5,9 +5,43 @@ namespace AS608 {
 Packet::Packet(
     uint8_t type, uint16_t data_length, uint8_t *data, uint32_t address
 )
+
     : address(address), type(type), length(data_length + 2)
 {
     memcpy(this->data, data, data_length);
+}
+
+Packet::Packet(SoftwareSerial &serial)
+{
+    read_start_code(serial);
+
+    while (serial.available() < 7) {
+        delay(1);
+    }
+
+    address = serial.read() << 24;
+    address |= serial.read() << 16;
+    address |= serial.read() << 8;
+    address |= serial.read();
+
+    type = serial.read();
+
+    length = serial.read() << 8;
+    length |= serial.read();
+
+    for (size_t i = 0; i < length - 2; i++) {
+        while (serial.available() < 1) {
+            delay(1);
+        }
+        data[i] = serial.read();
+    }
+
+    while (serial.available() < 2) {
+        delay(1);
+    }
+
+    checksum = serial.read() << 8;
+    checksum |= serial.read();
 }
 
 void Packet::read_start_code(SoftwareSerial &serial)
@@ -50,56 +84,6 @@ void Packet::send(SoftwareSerial &serial)
 
     serial.write(static_cast<uint8_t>(checksum >> 8));
     serial.write(static_cast<uint8_t>(checksum & 0xFF));
-
-    Serial.println(F("Sent"));
-    this->print();
-}
-
-Packet Packet::read_from(SoftwareSerial &serial)
-{
-    read_start_code(serial);
-
-    while (serial.available() < 7) {
-        delay(1);
-    }
-
-    uint8_t type, *data;
-    uint16_t length;
-
-    uint32_t address = serial.read() << 24;
-    address |= serial.read() << 16;
-    address |= serial.read() << 8;
-    address |= serial.read();
-
-    type = serial.read();
-
-    length = serial.read() << 8;
-    length |= serial.read();
-
-    data = new uint8_t[length - 2];
-
-    for (size_t i = 0; i < length - 2; i++) {
-        while (serial.available() < 1) {
-            delay(1);
-        }
-        data[i] = serial.read();
-    }
-
-    while (serial.available() < 2) {
-        delay(1);
-    }
-
-    uint16_t checksum = serial.read() << 8;
-    checksum |= serial.read();
-
-    Packet packet = Packet(type, length - 2, data, address);
-
-    // Serial.println(F("Received"));
-    // packet.print();
-
-    delete[] data;
-
-    return packet;
 }
 
 void Packet::print() const
@@ -145,12 +129,12 @@ Packet FingerprintModule::send_command(uint8_t *data, uint16_t length)
 
     packet.send(*serial);
 
-    return Packet::read_from(*serial);
+    return Packet(*serial);
 }
 
 Packet FingerprintModule::read_packet()
 {
-    return Packet::read_from(*serial);
+    return Packet(*serial);
 }
 
 bool FingerprintModule::verify_password()

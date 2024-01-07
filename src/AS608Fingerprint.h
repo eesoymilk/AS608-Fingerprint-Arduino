@@ -47,6 +47,9 @@ enum CommandCode : uint8_t {
     ValidTempleteNum = 0x1D,
     UserGPIOCommand = 0x1E,
     ReadIndexTable = 0x1F,
+
+    // self-defined command codes
+    Acknowledgement = 0x30,
 };
 
 enum ConfirmationCode : uint8_t {
@@ -95,13 +98,13 @@ struct Packet {
         uint32_t address = 0xFFFFFFFF
     );
 
+    Packet(SoftwareSerial &serial);
+
     void send(SoftwareSerial &serial);
 
     void print() const;
 
     static void read_start_code(SoftwareSerial &serial);
-
-    static Packet read_from(SoftwareSerial &serial);
 };
 
 class FingerprintModule {

@@ -3,5 +3,5 @@
 ## Usage with Arduino CLI
 
 ```zsh
-arduino-cli compile -u .
+arduino-cli compile --fqbn "arduino:avr:uno" examples/Dev -v -u
 ```
