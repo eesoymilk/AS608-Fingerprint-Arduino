@@ -1,6 +1,7 @@
-import serial
 import time
-from time import perf_counter
+import serial
+from serial.tools.list_ports import comports
+from tqdm import tqdm
 from enum import Enum
 from PIL import Image
 
@@ -134,12 +135,10 @@ class AS608Controller:
     def get_fingerprint_image(self):
         while True:
             response = self.ser.read(1)
-
             if not response:
                 continue
 
             response_state = DeviceState(response[0])
-
             if response_state == DeviceState.NoFingerDetected:
                 print("Please place your finger on the sensor.")
                 continue
@@ -152,24 +151,14 @@ class AS608Controller:
             break
 
     def upload_fingerprint_image(self):
+        pbar = tqdm(total=256 * 288 / 2)
         image_bytes = bytearray()
         while True:
-            # timeout = 10
-            # while self.ser.in_waiting == 0:
-            #     print("Waiting for data...")
-            #     timeout -= 1
-            #     if timeout == 0:
-            #         return
-            #     time.sleep(0.1)
-
             state_bytes = self.ser.read(1)
-
             if not state_bytes:
                 continue
 
             state = DeviceState(state_bytes[0])
-            # print(f"State: {state}")
-
             if state != DeviceState.DataStart:
                 if state == DeviceState.CommandSuccess:
                     print("Command success.")
@@ -185,6 +174,7 @@ class AS608Controller:
 
             data_bytes = self.ser.read(length)
             image_bytes.extend(data_bytes)
+            pbar.update(length)
 
             state_bytes = self.ser.read(1)
             state = DeviceState(state_bytes[0])
@@ -192,13 +182,25 @@ class AS608Controller:
                 print(f"State is not DataEnd. State: {state}")
                 return
 
-        print(f"Image size: {len(image_bytes)} bytes")
+        if len(image_bytes) != 256 * 288 / 2:
+            print(f"Image is not 256 by 288. Length: {len(image_bytes)}")
+            return
+
         image = decode_image(image_bytes, 256, 288)
         image.show()
 
 
 def main():
-    with AS608Controller() as controller:
+    com_ports = sorted(comports())
+    arduino_port = next(
+        filter(lambda port: "Arduino" in port.description, com_ports), None
+    )
+
+    if arduino_port is None:
+        print("Arduino not found.")
+        return
+
+    with AS608Controller(port_name=arduino_port.device) as controller:
         controller.run()
 
 
