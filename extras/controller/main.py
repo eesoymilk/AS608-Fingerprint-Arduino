@@ -5,6 +5,9 @@ from tqdm import tqdm
 from enum import Enum
 from PIL import Image
 
+n_image_bytes = int(256 * 288 / 2)
+image_dimension = (256, 288)
+
 
 class DeviceState(Enum):
     Initialization = 0x00
@@ -34,7 +37,9 @@ class Command(Enum):
         return self.name
 
 
-def decode_image(image_bytes: bytearray | bytes, width: int, height: int):
+def decode_image(
+    image_bytes: bytearray | bytes, dimension: tuple[int, int] = image_dimension
+):
     # Initialize an array for the decoded pixel data
     pixels = bytearray()
 
@@ -48,7 +53,7 @@ def decode_image(image_bytes: bytearray | bytes, width: int, height: int):
         pixels.append(low_nibble * 17)
 
     # Create an image from the pixel data
-    image = Image.frombytes("L", (width, height), bytes(pixels))
+    image = Image.frombytes("L", dimension, bytes(pixels))
     return image
 
 
@@ -151,7 +156,7 @@ class AS608Controller:
             break
 
     def upload_fingerprint_image(self):
-        pbar = tqdm(total=256 * 288 / 2)
+        pbar = tqdm(desc="Downloading fingerprint image", total=n_image_bytes)
         image_bytes = bytearray()
         while True:
             state_bytes = self.ser.read(1)
@@ -182,11 +187,11 @@ class AS608Controller:
                 print(f"State is not DataEnd. State: {state}")
                 return
 
-        if len(image_bytes) != 256 * 288 / 2:
+        if len(image_bytes) != n_image_bytes:
             print(f"Image is not 256 by 288. Length: {len(image_bytes)}")
             return
 
-        image = decode_image(image_bytes, 256, 288)
+        image = decode_image(image_bytes)
         image.show()
 
 
