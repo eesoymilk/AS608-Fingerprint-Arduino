@@ -1,11 +1,20 @@
 #include "AS608Fingerprint.h"
 
+#include "HardwareSerial.h"
+
 namespace AS608 {
+
+uint8_t read_byte(SoftwareSerial &serial)
+{
+    while (!serial.available()) {
+        delay(1);
+    }
+    return serial.read();
+}
 
 Packet::Packet(
     uint8_t type, uint16_t data_length, uint8_t *data, uint32_t address
 )
-
     : address(address), type(type), length(data_length + 2)
 {
     memcpy(this->data, data, data_length);
@@ -13,9 +22,33 @@ Packet::Packet(
 
 Packet::Packet(SoftwareSerial &serial)
 {
-    read_start_code(serial);
+    uint32_t timeout;
 
+    while (true) {
+        timeout = millis() + 2000;
+        while (serial.available() < 2) {
+            if (millis() > timeout) {
+                type = PacketType::PacketTimeout;
+                return;
+            }
+            delay(1);
+        }
+
+        uint8_t high = serial.read();
+        uint8_t low = serial.peek();
+
+        if (high == highByte(StartCode) && low == lowByte(StartCode)) {
+            serial.read();
+            break;
+        }
+    }
+
+    timeout = millis() + 7000;
     while (serial.available() < 7) {
+        if (millis() > timeout) {
+            type = PacketType::PacketTimeout;
+            return;
+        }
         delay(1);
     }
 
@@ -30,13 +63,23 @@ Packet::Packet(SoftwareSerial &serial)
     length |= serial.read();
 
     for (size_t i = 0; i < length - 2; i++) {
+        timeout = millis() + 1000;
         while (serial.available() < 1) {
+            if (millis() > timeout) {
+                type = PacketType::PacketTimeout;
+                return;
+            }
             delay(1);
         }
         data[i] = serial.read();
     }
 
+    timeout = millis() + 2000;
     while (serial.available() < 2) {
+        if (millis() > timeout) {
+            type = PacketType::PacketTimeout;
+            return;
+        }
         delay(1);
     }
 
@@ -46,19 +89,6 @@ Packet::Packet(SoftwareSerial &serial)
 
 void Packet::read_start_code(SoftwareSerial &serial)
 {
-    while (true) {
-        while (serial.available() < 2) {
-            delay(1);
-        }
-
-        uint8_t high = serial.read();
-        uint8_t low = serial.peek();
-
-        if (high == highByte(StartCode) && low == lowByte(StartCode)) {
-            serial.read();
-            return;
-        }
-    }
 }
 
 void Packet::send(SoftwareSerial &serial)
@@ -84,6 +114,8 @@ void Packet::send(SoftwareSerial &serial)
 
     serial.write(static_cast<uint8_t>(checksum >> 8));
     serial.write(static_cast<uint8_t>(checksum & 0xFF));
+
+    // this->print();
 }
 
 void Packet::print() const
@@ -129,7 +161,11 @@ Packet FingerprintModule::send_command(uint8_t *data, uint16_t length)
 
     packet.send(*serial);
 
-    return Packet(*serial);
+    packet = Packet(*serial);
+
+    // packet.print();
+
+    return packet;
 }
 
 Packet FingerprintModule::read_packet()
@@ -149,6 +185,8 @@ bool FingerprintModule::verify_password()
 
     Packet response = send_command(data, sizeof(data));
 
+    Serial.write(response.type);
+
     return response.type == PacketType::AcknowledgePacket &&
            response.data[0] == ConfirmationCode::OK;
 }
@@ -161,7 +199,7 @@ ConfirmationCode FingerprintModule::read_parameters()
 
     if (response.type != PacketType::AcknowledgePacket ||
         response.length != 19) {
-        return ConfirmationCode::BadPacket;
+        return ConfirmationCode::PacketReceiveError;
     }
 
     if (response.data[0] != ConfirmationCode::OK) {
@@ -199,7 +237,22 @@ ConfirmationCode FingerprintModule::up_image()
     Packet response = send_command(data, sizeof(data));
 
     if (response.type != PacketType::AcknowledgePacket) {
-        return ConfirmationCode::BadPacket;
+        return ConfirmationCode::PacketReceiveError;
+    }
+
+    return static_cast<ConfirmationCode>(response.data[0]);
+}
+
+ConfirmationCode FingerprintModule::write_reg(
+    uint8_t reg_address, uint8_t reg_value
+)
+{
+    uint8_t data[] = {CommandCode::WriteReg, reg_address, reg_value};
+
+    Packet response = send_command(data, sizeof(data));
+
+    if (response.type != PacketType::AcknowledgePacket) {
+        return ConfirmationCode::PacketReceiveError;
     }
 
     return static_cast<ConfirmationCode>(response.data[0]);

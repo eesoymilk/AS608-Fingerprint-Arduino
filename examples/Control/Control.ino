@@ -7,7 +7,7 @@ using namespace Controller;
 SoftwareSerial fingerprint_serial = SoftwareSerial(2, 3);
 FingerprintModule finger = FingerprintModule(&fingerprint_serial);
 ConfirmationCode buffer_code;
-uint8_t buffer_byte;
+uint8_t buffer_byte[3];
 
 void setup()
 {
@@ -26,9 +26,7 @@ void setup()
         }
     }
 
-    finger.read_parameters();
     Serial.write(DeviceState::InitializationComplete);
-    Serial.write(DeviceState::Idle);
 }
 
 void loop()  // run over and over again
@@ -40,15 +38,24 @@ void loop()  // run over and over again
         return;
     }
 
-    buffer_byte = Serial.read();
+    buffer_byte[0] = Serial.read();
 
-    switch (buffer_byte) {
+    switch (buffer_byte[0]) {
         case CommandCode::GetImage:
             try_to_get_image();
             break;
         case CommandCode::UpImage:
             upload_image();
             break;
+        case CommandCode::PrintDeviceParameters:
+            finger.read_parameters();
+            finger.print();
+            Serial.write(DeviceState::CommandSuccess);
+            break;
+        case CommandCode::WriteReg:
+            write_reg();
+            break;
+
         default:
             Serial.write(DeviceState::CommandFailed);
             break;
@@ -82,48 +89,42 @@ void upload_image()
         return;
     }
 
-    Serial.write(DeviceState::DataStart);
-
     while (true) {
         Packet packet = finger.read_packet();
 
+        if (packet.type == PacketType::PacketTimeout) {
+            Serial.write(DeviceState::CommandTimeout);
+            return;
+        }
+
         if (packet.type != PacketType::DataPacket &&
             packet.type != PacketType::EndOfDataPacket) {
-            // Serial.println("Invalid packet type");
-            Serial.write(DeviceState::DataEnd);
             Serial.write(DeviceState::CommandFailed);
             return;
         }
 
-        // Serial.println("Received packet!!!");
-
-        Serial.flush();
+        Serial.write(DeviceState::DataStart);
         Serial.write(packet.length - 2);
-        for (uint8_t i = 0; i < packet.length - 2; i++) {
-            while (!Serial.availableForWrite()) {
-                delay(1);
-            }
-            Serial.write(packet.data[i]);
-        }
-
-        while (!Serial.available()) {
-            delay(1);
-        }
-        uint8_t cmd_code = Serial.read();
-        if (cmd_code != CommandCode::Acknowledgement) {
-            // Serial.println("Invalid command code");
-            Serial.write(DeviceState::DataEnd);
-            Serial.write(DeviceState::CommandFailed);
-            return;
-        }
+        Serial.write(packet.data, packet.length - 2);
+        Serial.write(DeviceState::DataEnd);
 
         if (packet.type == PacketType::EndOfDataPacket) {
-            // Serial.println("End of data packet");
-            Serial.write(DeviceState::DataEnd);
             Serial.write(DeviceState::CommandSuccess);
             return;
         }
-
-        delay(1000);
     }
+}
+
+void write_reg()
+{
+    while (Serial.available() < 2) {
+        delay(1);
+    }
+    buffer_byte[1] = Serial.read();
+    buffer_byte[2] = Serial.read();
+    buffer_code = finger.write_reg(buffer_byte[1], buffer_byte[2]);
+    Serial.write(
+        buffer_code == ConfirmationCode::OK ? DeviceState::CommandSuccess
+                                            : DeviceState::CommandFailed
+    );
 }

@@ -1,5 +1,6 @@
 import serial
 import time
+from time import perf_counter
 from enum import Enum
 from PIL import Image
 
@@ -10,7 +11,8 @@ class DeviceState(Enum):
     InitializationFailed = 0x02
     CommandSuccess = 0x03
     CommandFailed = 0x04
-    NoFingerDetected = 0x05
+    CommandTimeout = 0x05
+    NoFingerDetected = 0x06
     DataStart = 0x07
     DataEnd = 0x08
     Idle = 0x69
@@ -22,8 +24,10 @@ class DeviceState(Enum):
 class Command(Enum):
     GetImage = 0x01
     UpImage = 0x0A
+    WriteReg = 0x0E
 
     Acknowledgement = 0x30
+    PrintDeviceParameters = 0x31
 
     def __str__(self):
         return self.name
@@ -48,7 +52,7 @@ def decode_image(image_bytes: bytearray | bytes, width: int, height: int):
 
 
 class AS608Controller:
-    def __init__(self, port_name: str = "/dev/ttyACM1"):
+    def __init__(self, port_name: str = "/dev/ttyACM0"):
         self.ser = serial.Serial(port_name, 57600, timeout=1)
 
         while True:
@@ -64,6 +68,15 @@ class AS608Controller:
                 break
             elif state == DeviceState.InitializationFailed:
                 raise Exception("Initialization failed.")
+
+    def print_device_info(self):
+        print("--- Device info ---")
+        while self.ser.in_waiting < 7:
+            time.sleep(0.1)
+        for _ in range(7):
+            line = self.ser.readline()
+            print(line.decode("utf-8"), end="")
+        print("-------------------")
 
     def __enter__(self):
         return self
@@ -91,6 +104,30 @@ class AS608Controller:
             self.get_fingerprint_image()
         elif command == Command.UpImage:
             self.upload_fingerprint_image()
+        elif command == Command.PrintDeviceParameters:
+            self.print_device_info()
+        elif command == Command.WriteReg:
+            reg_addr = int(input("Enter register address: "), 16).to_bytes(
+                1, byteorder="big"
+            )
+            reg_value = int(input("Enter register value: "), 16).to_bytes(
+                1, byteorder="big"
+            )
+            print(f"Register address: {reg_addr.hex()}")
+            print(f"Register value: {reg_value.hex()}")
+            self.ser.write(reg_addr)
+            self.ser.write(reg_value)
+
+            while self.ser.in_waiting < 1:
+                time.sleep(0.1)
+
+            state_byte = self.ser.read(1)
+            state = DeviceState(state_byte[0])
+            if state == DeviceState.CommandSuccess:
+                print("Command success.")
+            else:
+                print(f"Command failed. State: {state}")
+
         else:
             raise Exception(f"Unknown command: {command}")
 
@@ -115,51 +152,48 @@ class AS608Controller:
             break
 
     def upload_fingerprint_image(self):
-        response = self.ser.read(1)
-
-        if not response:
-            raise Exception("No response received.")
-
-        response_state = DeviceState(response[0])
-
-        if response_state != DeviceState.DataStart:
-            raise Exception(f"Unexpected response: {response_state}")
-
-        # while True:
-        #     response = self.ser.readline()
-        #     print(f"Response: {response.decode('utf-8')}")
-
         image_bytes = bytearray()
         while True:
-            while self.ser.in_waiting == 0:
-                print("Waiting for data...")
-                time.sleep(0.5)
+            # timeout = 10
+            # while self.ser.in_waiting == 0:
+            #     print("Waiting for data...")
+            #     timeout -= 1
+            #     if timeout == 0:
+            #         return
+            #     time.sleep(0.1)
 
-            bytes_read = self.ser.read(1)
-            print(f"First read: {bytes_read.hex()}")
+            state_bytes = self.ser.read(1)
 
-            try:
-                current_state = DeviceState(bytes_read[0])
-                print(f"Current state: {current_state}")
-                if current_state == DeviceState.DataEnd:
+            if not state_bytes:
+                continue
+
+            state = DeviceState(state_bytes[0])
+            # print(f"State: {state}")
+
+            if state != DeviceState.DataStart:
+                if state == DeviceState.CommandSuccess:
+                    print("Command success.")
                     break
-            except ValueError:
-                pass
 
-            length = int.from_bytes(bytes_read, byteorder="big")
+                print(f"State is not DataStart. State: {state}")
+                return
+
+            length_bytes = self.ser.read(1)
+            length = int.from_bytes(length_bytes, byteorder="big")
             while length > self.ser.in_waiting:
-                time.sleep(0.2)
+                ...
 
-            bytes_read = self.ser.read(length)
-            print(f"Read: {bytes_read.hex()}")
-            image_bytes.extend(bytes_read)
+            data_bytes = self.ser.read(length)
+            image_bytes.extend(data_bytes)
 
-            ack_bytes = 0x30.to_bytes(1, byteorder="big")
-            self.ser.write(ack_bytes)
-            self.ser.reset_input_buffer()
+            state_bytes = self.ser.read(1)
+            state = DeviceState(state_bytes[0])
+            if state != DeviceState.DataEnd:
+                print(f"State is not DataEnd. State: {state}")
+                return
 
         print(f"Image size: {len(image_bytes)} bytes")
-        image = decode_image(image_bytes, 256, 256)
+        image = decode_image(image_bytes, 256, 288)
         image.show()
 
 

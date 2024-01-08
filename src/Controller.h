@@ -9,8 +9,9 @@ enum DeviceState : uint8_t {
 
     CommandSuccess = 0x03,
     CommandFailed = 0x04,
+    CommandTimeout = 0x05,
 
-    NoFingerDetected = 0x05,
+    NoFingerDetected = 0x06,
 
     DataStart = 0x07,
     DataEnd = 0x08,

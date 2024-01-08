@@ -13,6 +13,9 @@ enum PacketType : uint8_t {
     DataPacket = 0x02,
     AcknowledgePacket = 0x07,
     EndOfDataPacket = 0x08,
+
+    // self-defined packet types
+    PacketTimeout = 0x21,
 };
 
 enum CommandCode : uint8_t {
@@ -50,6 +53,7 @@ enum CommandCode : uint8_t {
 
     // self-defined command codes
     Acknowledgement = 0x30,
+    PrintDeviceParameters = 0x31,
 };
 
 enum ConfirmationCode : uint8_t {
@@ -81,8 +85,10 @@ enum ConfirmationCode : uint8_t {
     CommunicationPortOperationFail = 0x1D,
 
     // self-defined error codes
-    BadPacket = 0x21,
+    // BadPacket = 0x21,
 };
+
+uint8_t read_byte(SoftwareSerial &serial);
 
 struct Packet {
     uint32_t address;
@@ -131,6 +137,8 @@ class FingerprintModule {
     ConfirmationCode get_image();
 
     ConfirmationCode up_image();
+
+    ConfirmationCode write_reg(uint8_t reg_address, uint8_t reg_value);
 
     void print() const;
 };
