@@ -58,6 +58,7 @@ class AS608Controller:
         port_name: str = "/dev/ttyACM0",
         image_dimension: tuple[int, int] = (256, 288),
     ):
+        print(f"Connecting to {port_name}...")
         self.ser = serial.Serial(port_name, 57600, timeout=1)
         self.image_dimension = image_dimension
         self.n_image_bytes = int(image_dimension[0] * image_dimension[1] / 2)
