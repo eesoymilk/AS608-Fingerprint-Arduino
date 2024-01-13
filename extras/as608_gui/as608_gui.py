@@ -42,7 +42,9 @@ class Command(Enum):
         return self.name
 
 
-def decode_image(image_bytes: bytearray | bytes, dimension: tuple[int, int]) -> QImage:
+def decode_image(
+    image_bytes: bytearray | bytes, dimension: tuple[int, int]
+) -> QImage:
     # Initialize an array for the decoded pixel data
     pixels = bytearray()
 
@@ -61,7 +63,9 @@ def decode_image(image_bytes: bytearray | bytes, dimension: tuple[int, int]) -> 
 
 def find_arduino_port():
     com_ports = comports()
-    arduino_port = next(filter(lambda p: "Arduino" in p.description, com_ports), None)
+    arduino_port = next(
+        filter(lambda p: "Arduino" in p.description, com_ports), None
+    )
     if arduino_port is None:
         raise ValueError("Arduino not found")
     return arduino_port
@@ -147,7 +151,9 @@ class AS608Thread(QThread):
 
             data_bytes = self.ser.read(length)
             image_bytes.extend(data_bytes)
-            self.update_progress.emit(int(len(image_bytes) / self.n_image_bytes * 100))
+            self.update_progress.emit(
+                int(len(image_bytes) / self.n_image_bytes * 100)
+            )
 
             state_bytes = self.ser.read(1)
             state = DeviceState(state_bytes[0])
