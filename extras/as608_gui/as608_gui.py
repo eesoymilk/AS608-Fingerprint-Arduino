@@ -163,7 +163,7 @@ class AS608Thread(QThread):
         pixmap = QPixmap.fromImage(image)
         self.update_image.emit(pixmap)
         self.update_status.emit("Image downloaded.")
-        image.save("fingerprint.bmp")
+        image.save("fingerprint3.bmp")
 
 
 class AS608Window(QMainWindow):
