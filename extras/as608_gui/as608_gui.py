@@ -1,6 +1,15 @@
+import copy
 from enum import Enum
+from typing import Optional, Literal
+from pathlib import Path
+
 import serial
 from serial.tools.list_ports import comports
+
+import cv2
+import numpy as np
+from cv2.typing import MatLike
+from numpy.typing import NDArray
 
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtGui import QImage, QPixmap
@@ -9,9 +18,20 @@ from PyQt6.QtWidgets import (
     QMainWindow,
     QWidget,
     QVBoxLayout,
-    QLabel,
+    QHBoxLayout,
+    QGridLayout,
+    QStatusBar,
     QProgressBar,
+    QLabel,
+    QPushButton,
 )
+
+from fingerprint_matcher import Fingerprint, match_minutiae
+
+script_dir = Path(__file__).parent.resolve()
+db_dir = script_dir / "db"
+
+db_dir.mkdir(exist_ok=True)
 
 
 class DeviceState(Enum):
@@ -44,7 +64,7 @@ class Command(Enum):
 
 def decode_image(
     image_bytes: bytearray | bytes, dimension: tuple[int, int]
-) -> QImage:
+) -> NDArray[np.uint8]:
     # Initialize an array for the decoded pixel data
     pixels = bytearray()
 
@@ -57,8 +77,24 @@ def decode_image(
         pixels.append(high_nibble * 17)  # 17 = 255 / 15
         pixels.append(low_nibble * 17)
 
-    # Create a QImage from the pixel data
-    return QImage(pixels, *dimension, QImage.Format.Format_Grayscale8)
+    pixels_array = np.array(pixels, dtype=np.uint8)
+    return np.reshape(pixels_array, (dimension[1], dimension[0]))
+
+    # # Create a QImage from the pixel data
+    # return QImage(pixels, *dimension, QImage.Format.Format_Grayscale8)
+
+
+def to_pixmap(image: NDArray[np.uint8]) -> QPixmap:
+    qimage = QImage(
+        image,
+        image.shape[1],
+        image.shape[0],
+        image.strides[0],
+        QImage.Format.Format_BGR888
+        if image.ndim == 3
+        else QImage.Format.Format_Grayscale8,
+    )
+    return QPixmap.fromImage(qimage)
 
 
 def find_arduino_port():
@@ -76,12 +112,15 @@ class AS608Thread(QThread):
     n_image_bytes = image_dimension[0] * image_dimension[1] // 2
 
     update_status = pyqtSignal(str)
-    update_image = pyqtSignal(QPixmap)
+    update_message = pyqtSignal(str)
+    update_fingerprint = pyqtSignal(Fingerprint, str)
     update_progress = pyqtSignal(int)
 
     def __init__(self):
         super().__init__()
         self.ser = serial.Serial(find_arduino_port().device, 57600, timeout=1)
+        self.current_fp: Optional[Fingerprint] = None
+        self.initialized = False
 
     def init_as608(self):
         while True:
@@ -98,16 +137,18 @@ class AS608Thread(QThread):
             elif state == DeviceState.InitializationFailed:
                 raise Exception("Initialization failed.")
 
-    def run(self):
-        self.init_as608()
+        self.initialized = True
 
-        while True:
-            self.get_fingerprint_image()
-            self.upload_fingerprint_image()
+    def run(self):
+        if not self.initialized:
+            self.init_as608()
+        self.get_fingerprint_image()
+        self.upload_fingerprint_image()
+        self.match_fingerprint()
 
     def get_fingerprint_image(self):
         self.ser.write(Command.GetImage.value)
-        self.update_status.emit("Capturing finger image.")
+        self.update_status.emit("Capturing finger image")
 
         while True:
             response = self.ser.read(1)
@@ -119,14 +160,14 @@ class AS608Thread(QThread):
                 continue
 
             if response_state == DeviceState.CommandSuccess:
-                self.update_status.emit("Finger image captured.")
+                self.update_status.emit("Finger image captured")
             else:
-                self.update_status.emit("Failed to capture finger image.")
+                self.update_status.emit("Failed to capture finger image")
             break
 
     def upload_fingerprint_image(self):
         self.ser.write(Command.UpImage.value)
-        self.update_status.emit("Downloading image.")
+        self.update_status.emit("Downloading image")
         self.update_progress.emit(0)
         image_bytes = bytearray()
 
@@ -162,56 +203,137 @@ class AS608Thread(QThread):
                 return
 
         if len(image_bytes) != self.n_image_bytes:
-            self.update_status.emit("Failed to download image.")
+            self.update_status.emit("Failed to download image")
             return
 
         image = decode_image(image_bytes, self.image_dimension)
-        pixmap = QPixmap.fromImage(image)
-        self.update_image.emit(pixmap)
-        self.update_status.emit("Image downloaded.")
-        image.save("fingerprint3.bmp")
+        self.current_fp = Fingerprint(image)
+        self.update_fingerprint.emit(self.current_fp, "top")
+        self.update_status.emit("Image downloaded")
+
+    def match_fingerprint(self):
+        for fp_path in db_dir.glob("*.bmp"):
+            fp = Fingerprint(cv2.imread(str(fp_path), cv2.IMREAD_GRAYSCALE))
+            self.update_fingerprint.emit(fp, "bottom")
+            n_matches = match_minutiae(self.current_fp.minutiae, fp.minutiae)
+            print(f"{fp_path.name}: {n_matches} matches")
+            if n_matches > 12:
+                self.update_status.emit("Fingerprint matched")
+                self.update_message.emit(f"Hello, {fp_path.stem}!")
+                return
+
+        self.update_status.emit("Fingerprint not matched")
+        self.update_message.emit(
+            "Hello, stranger! Do you want to register your fingerprint?"
+        )
 
 
 class AS608Window(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.initUI()
-        self.start_fingerprint_thread()
+        self.setWindowTitle("AS608 Fingerprint Sensor GUI")
 
-    def initUI(self):
-        self.label_status = QLabel("Status: Not connected", self)
-        self.label_image = QLabel(self)
-        self.progress_bar = QProgressBar(self)
-        self.progress_bar.setRange(0, 100)
+        self.as608_thread = AS608Thread()
 
-        layout = QVBoxLayout()
-        layout.addWidget(self.label_status)
-        layout.addWidget(self.label_image)
-        layout.addWidget(self.progress_bar)
-
-        centralWidget = QWidget()
-        centralWidget.setLayout(layout)
-        self.setCentralWidget(centralWidget)
-
-        self.setGeometry(300, 300, 350, 250)
-        self.setWindowTitle("AS608 Fingerprint Sensor Controller")
+        self.init_ui()
+        self.init_fingerprint_thread()
         self.show()
 
-    def start_fingerprint_thread(self):
-        self.as608_thread = AS608Thread()
-        self.as608_thread.update_status.connect(self.update_status)
-        self.as608_thread.update_image.connect(self.update_image)
-        self.as608_thread.update_progress.connect(self.update_progress)
         self.as608_thread.start()
 
-    def update_status(self, status):
-        self.label_status.setText(f"Status: {status}")
+    def init_ui(self):
+        self.central_widget = QWidget(self)
+        self.central_layout = QVBoxLayout(self.central_widget)
+        self.setCentralWidget(self.central_widget)
 
-    def update_image(self, image):
-        self.label_image.setPixmap(image)
+        self.fp_box = QWidget(self.central_widget)
+        self.fp_grid = QGridLayout(self.fp_box)
+        self.fp_box.setLayout(self.fp_grid)
+
+        self.top_fp_raw_label = QLabel(self.central_widget)
+        self.top_fp_raw_label.setMinimumSize(256, 288)
+        self.top_fp_enhanced_label = QLabel(self.central_widget)
+        self.top_fp_enhanced_label.setMinimumSize(256, 288)
+        self.top_fp_skeleton_label = QLabel(self.central_widget)
+        self.top_fp_skeleton_label.setMinimumSize(256, 288)
+        self.top_fp_result_label = QLabel(self.central_widget)
+        self.top_fp_result_label.setMinimumSize(256, 288)
+
+        self.bottom_fp_raw_label = QLabel(self.central_widget)
+        self.bottom_fp_raw_label.setMinimumSize(256, 288)
+        self.bottom_fp_enhanced_label = QLabel(self.central_widget)
+        self.bottom_fp_enhanced_label.setMinimumSize(256, 288)
+        self.bottom_fp_skeleton_label = QLabel(self.central_widget)
+        self.bottom_fp_skeleton_label.setMinimumSize(256, 288)
+        self.bottom_fp_result_label = QLabel(self.central_widget)
+        self.bottom_fp_result_label.setMinimumSize(256, 288)
+
+        self.fp_grid.addWidget(self.top_fp_raw_label, 0, 0)
+        self.fp_grid.addWidget(self.top_fp_enhanced_label, 0, 1)
+        self.fp_grid.addWidget(self.top_fp_skeleton_label, 0, 2)
+        self.fp_grid.addWidget(self.top_fp_result_label, 0, 3)
+        self.fp_grid.addWidget(self.bottom_fp_raw_label, 1, 0)
+        self.fp_grid.addWidget(self.bottom_fp_enhanced_label, 1, 1)
+        self.fp_grid.addWidget(self.bottom_fp_skeleton_label, 1, 2)
+        self.fp_grid.addWidget(self.bottom_fp_result_label, 1, 3)
+
+        self.progress_bar = QProgressBar(self.central_widget)
+
+        self.message_label = QLabel(self.central_widget)
+        self.message_label.setText(
+            "Hello, welcome to the AS608 Fingerprint Sensor GUI!"
+        )
+
+        buttons_layout = QHBoxLayout()
+        self.btn1 = QPushButton("Yes", self.central_widget)
+        self.btn2 = QPushButton("No", self.central_widget)
+        self.btn2.clicked.connect(self.restart)
+        buttons_layout.addWidget(self.btn1)
+        buttons_layout.addWidget(self.btn2)
+
+        self.status_bar = QStatusBar(self)
+        self.setStatusBar(self.status_bar)
+        self.status_bar.showMessage("Status: Not connected")
+
+        # Add widgets to the central layout
+        self.central_layout.addWidget(self.fp_box)
+        self.central_layout.addWidget(self.progress_bar)
+        self.central_layout.addWidget(self.message_label)
+        self.central_layout.addLayout(buttons_layout)
+
+    def init_fingerprint_thread(self):
+        self.as608_thread.update_status.connect(self.update_status)
+        self.as608_thread.update_message.connect(self.message_label.setText)
+        self.as608_thread.update_fingerprint.connect(self.update_fingerprint)
+        self.as608_thread.update_progress.connect(self.update_progress)
+
+    def update_status(self, status):
+        self.status_bar.showMessage(f"Status: {status}")
+
+    def update_fingerprint(self, fp: Fingerprint, side: str):
+        if side == "top":
+            self.top_fp_raw_label.setPixmap(to_pixmap(fp.img))
+            self.top_fp_enhanced_label.setPixmap(to_pixmap(fp.enhanced_img))
+            self.top_fp_skeleton_label.setPixmap(to_pixmap(fp.skeleton_img))
+            self.top_fp_result_label.setPixmap(to_pixmap(fp.result_img))
+        elif side == "bottom":
+            self.bottom_fp_raw_label.setPixmap(to_pixmap(fp.img))
+            self.bottom_fp_enhanced_label.setPixmap(to_pixmap(fp.enhanced_img))
+            self.bottom_fp_skeleton_label.setPixmap(to_pixmap(fp.skeleton_img))
+            self.bottom_fp_result_label.setPixmap(to_pixmap(fp.result_img))
+        else:
+            raise ValueError("side must be either 'top' or 'bottom'")
 
     def update_progress(self, progress: int):
         self.progress_bar.setValue(progress)
+
+    def restart(self):
+        if self.as608_thread.isRunning():
+            self.as608_thread.terminate()
+            self.as608_thread.ser.close()
+            self.as608_thread = AS608Thread()
+            self.init_fingerprint_thread()
+        self.as608_thread.start()
 
     def closeEvent(self, a0):
         self.as608_thread.terminate()
