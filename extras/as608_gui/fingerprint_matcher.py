@@ -1,4 +1,4 @@
-import copy
+from pathlib import Path
 from typing import Sequence
 
 import numpy as np
@@ -8,8 +8,6 @@ from skimage.morphology import skeletonize
 
 from cv2.typing import MatLike
 from numpy.typing import NDArray
-
-from PyQt6.QtGui import QImage
 
 from fingerprint_enhancer import enhance_Fingerprint
 from fingerprint_feature_extractor import extract_minutiae_features
@@ -33,9 +31,9 @@ class Minutia:
         d = distance(self, __value)
         da = angle_difference(self.angle, __value.angle)
         if minutia_type == "termination":
-            return d <= 20 and da <= 40
+            return d <= 17.5 and da <= 30
         else:
-            return d <= 20
+            return d <= 17.5
 
 
 def distance(m1: Minutia, m2: Minutia) -> float:
@@ -57,10 +55,12 @@ def match_minutiae(
     Match two fingerprints based on their minutiae.
     """
     n_matches = 0
+    matched_indices = []
     for m1 in minutiae1:
-        for m2 in minutiae2:
-            if m1 == m2:
+        for i, m2 in enumerate(minutiae2):
+            if i not in matched_indices and m1 == m2:
                 n_matches += 1
+                matched_indices.append(i)
                 break
     return n_matches
 
@@ -112,23 +112,21 @@ class Fingerprint:
             (rr, cc) = skimage.draw.circle_perimeter(b.locX, b.locY, 3)
             skimage.draw.set_color(self.result_img, (rr, cc), (255, 0, 0))
 
+    def save(self, db_dir: Path, name: str):
+        fp_dir = db_dir / name
+        fp_dir.mkdir(exist_ok=True)
+        cv2.imwrite(str(fp_dir / "original.bmp"), self.img)
+        cv2.imwrite(str(fp_dir / "enhanced.bmp"), self.enhanced_img)
+        cv2.imwrite(str(fp_dir / "skeleton.bmp"), self.skeleton_img)
+        cv2.imwrite(str(fp_dir / "aligned.bmp"), self.aligned_img)
+        cv2.imwrite(str(fp_dir / "result.bmp"), self.result_img)
+
 
 def main():
-    img1 = cv2.imread("db/fingerprint1.bmp", cv2.IMREAD_GRAYSCALE)
-    img2 = cv2.imread("db/fingerprint3.bmp", cv2.IMREAD_GRAYSCALE)
-    # img3 = cv2.imread("fingerprint3.bmp", cv2.IMREAD_GRAYSCALE)
-
-    fp1 = Fingerprint(img1)
-    fp2 = Fingerprint(img2)
-
-    n_matches = match_minutiae(fp1.minutiae, fp2.minutiae)
-    print(f"Match count: {n_matches}")
-
-    cv2.imshow("img1 enhanced", fp1.enhanced_img)
-    cv2.imshow("img2 skeleton", fp2.skeleton_img)
-
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
+    db_dir = Path(__file__).parent / "db"
+    for fp_path in db_dir.glob("*/original.bmp"):
+        name = fp_path.parent.name
+        print(f"Processing {name}")
 
 
 if __name__ == "__main__":
