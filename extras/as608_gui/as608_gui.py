@@ -24,6 +24,7 @@ from PyQt6.QtWidgets import (
     QProgressBar,
     QLabel,
     QPushButton,
+    QLineEdit,
 )
 
 from fingerprint_matcher import Fingerprint, match_minutiae
@@ -231,6 +232,8 @@ class AS608Thread(QThread):
 class AS608Window(QMainWindow):
     def __init__(self):
         super().__init__()
+        self.current_fp: Optional[Fingerprint] = None
+
         self.setWindowTitle("AS608 Fingerprint Sensor GUI")
 
         self.as608_thread = AS608Thread()
@@ -246,10 +249,7 @@ class AS608Window(QMainWindow):
         self.central_layout = QVBoxLayout(self.central_widget)
         self.setCentralWidget(self.central_widget)
 
-        self.fp_box = QWidget(self.central_widget)
-        self.fp_grid = QGridLayout(self.fp_box)
-        self.fp_box.setLayout(self.fp_grid)
-
+        self.fp_grid = QGridLayout()
         self.top_fp_raw_label = QLabel(self.central_widget)
         self.top_fp_raw_label.setMinimumSize(256, 288)
         self.top_fp_enhanced_label = QLabel(self.central_widget)
@@ -284,6 +284,10 @@ class AS608Window(QMainWindow):
             "Hello, welcome to the AS608 Fingerprint Sensor GUI!"
         )
 
+        self.name_input = QLineEdit(self.central_widget)
+        self.name_input.setPlaceholderText("Enter your name here")
+        self.name_input.returnPressed.connect(self.register_fingerprint)
+
         buttons_layout = QHBoxLayout()
         self.btn1 = QPushButton("Yes", self.central_widget)
         self.btn2 = QPushButton("No", self.central_widget)
@@ -296,9 +300,10 @@ class AS608Window(QMainWindow):
         self.status_bar.showMessage("Status: Not connected")
 
         # Add widgets to the central layout
-        self.central_layout.addWidget(self.fp_box)
+        self.central_layout.addLayout(self.fp_grid)
         self.central_layout.addWidget(self.progress_bar)
         self.central_layout.addWidget(self.message_label)
+        self.central_layout.addWidget(self.name_input)
         self.central_layout.addLayout(buttons_layout)
 
     def init_fingerprint_thread(self):
@@ -312,6 +317,7 @@ class AS608Window(QMainWindow):
 
     def update_fingerprint(self, fp: Fingerprint, side: str):
         if side == "top":
+            self.current_fp = fp
             self.top_fp_raw_label.setPixmap(to_pixmap(fp.img))
             self.top_fp_enhanced_label.setPixmap(to_pixmap(fp.enhanced_img))
             self.top_fp_skeleton_label.setPixmap(to_pixmap(fp.skeleton_img))
@@ -326,6 +332,18 @@ class AS608Window(QMainWindow):
 
     def update_progress(self, progress: int):
         self.progress_bar.setValue(progress)
+
+    def register_fingerprint(self):
+        if self.current_fp is None:
+            return
+
+        name = self.name_input.text()
+        if not name:
+            return
+
+        cv2.imwrite(str(db_dir / f"{name}.bmp"), self.current_fp.img)
+        self.message_label.setText(f"Hello, {name}!")
+        self.name_input.clear()
 
     def restart(self):
         if self.as608_thread.isRunning():
